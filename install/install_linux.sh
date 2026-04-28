@@ -1,6 +1,6 @@
 #!/bin/bash
 # vm-mqtt-monitor installer for Linux (Debian, Ubuntu, and compatible distros)
-# Run as root: sudo bash install_linux.sh
+# Run as root: sudo bash install/install_linux.sh
 
 set -e
 
@@ -13,7 +13,7 @@ echo "=== vm-mqtt-monitor Linux Installer ==="
 
 # Check root
 if [ "$(id -u)" -ne 0 ]; then
-    echo "ERROR: Please run as root (sudo bash install_linux.sh)"
+    echo "ERROR: Please run as root (sudo bash install/install_linux.sh)"
     exit 1
 fi
 
@@ -32,25 +32,34 @@ else
 fi
 
 # Create install directory
-echo "Creating ${INSTALL_DIR}..."
 mkdir -p "${INSTALL_DIR}"
 
-# Copy files
-cp "${SCRIPT_DIR}/vm_mqtt_monitor.py" "${INSTALL_DIR}/"
-cp "${SCRIPT_DIR}/requirements.txt" "${INSTALL_DIR}/"
+# Copy files only if source and destination differ
+if [ "$(realpath "${SCRIPT_DIR}")" != "$(realpath "${INSTALL_DIR}")" ]; then
+    echo "Copying files to ${INSTALL_DIR}..."
+    cp "${SCRIPT_DIR}/vm_mqtt_monitor.py" "${INSTALL_DIR}/"
+    cp "${SCRIPT_DIR}/requirements.txt" "${INSTALL_DIR}/"
 
-# Copy config if not already present
-if [ ! -f "${INSTALL_DIR}/config.yaml" ]; then
-    if [ -f "${SCRIPT_DIR}/config.yaml" ]; then
-        cp "${SCRIPT_DIR}/config.yaml" "${INSTALL_DIR}/"
-        echo "Copied config.yaml"
-    else
-        cp "${SCRIPT_DIR}/config.example.yaml" "${INSTALL_DIR}/config.yaml"
-        echo ""
-        echo "  !! config.yaml created from example — edit it before starting the service:"
-        echo "     nano ${INSTALL_DIR}/config.yaml"
-        echo ""
+    if [ ! -f "${INSTALL_DIR}/config.yaml" ]; then
+        if [ -f "${SCRIPT_DIR}/config.yaml" ]; then
+            cp "${SCRIPT_DIR}/config.yaml" "${INSTALL_DIR}/"
+        else
+            cp "${SCRIPT_DIR}/config.example.yaml" "${INSTALL_DIR}/config.yaml"
+        fi
     fi
+else
+    echo "Already running from ${INSTALL_DIR}, skipping file copy."
+    # Create config from example if missing
+    if [ ! -f "${INSTALL_DIR}/config.yaml" ]; then
+        cp "${INSTALL_DIR}/config.example.yaml" "${INSTALL_DIR}/config.yaml"
+    fi
+fi
+
+if [ ! -f "${INSTALL_DIR}/config.yaml" ]; then
+    echo ""
+    echo "  !! config.yaml created from example — edit it before starting the service:"
+    echo "     nano ${INSTALL_DIR}/config.yaml"
+    echo ""
 fi
 
 # Create virtualenv (with system packages if apt provided them)
