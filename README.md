@@ -87,6 +87,12 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+> **SSL-Proxy / Firmen-Firewall Fehler?** Falls du eine Fehlermeldung wie `CertificateError` oder `SSLError` bekommst (typisch bei Netzwerken mit SSL-Inspection), diesen Befehl verwenden:
+> ```bash
+> pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org
+> pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
+> ```
+
 ### 2.3 Konfiguration erstellen
 
 ```bash
@@ -221,6 +227,12 @@ python -m venv venv
 .\venv\Scripts\pip install --upgrade pip
 .\venv\Scripts\pip install -r requirements.txt
 ```
+
+> **SSL-Proxy / Firmen-Firewall Fehler?** Falls du eine Fehlermeldung wie `CertificateError` oder `SSLError` bekommst (typisch bei Netzwerken mit SSL-Inspection), diesen Befehl verwenden:
+> ```powershell
+> .\venv\Scripts\pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org
+> .\venv\Scripts\pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
+> ```
 
 ### 3.5 Test-Lauf (einmalig ausführen)
 

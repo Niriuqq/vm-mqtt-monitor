@@ -48,8 +48,11 @@ fi
 # Create virtualenv and install dependencies
 echo "Setting up Python virtual environment..."
 python3 -m venv "${VENV_DIR}"
-"${VENV_DIR}/bin/pip" install --upgrade pip -q
-"${VENV_DIR}/bin/pip" install -r "${INSTALL_DIR}/requirements.txt" -q
+
+# Use --trusted-host flags in case the network uses SSL inspection (corporate proxy)
+PIP_TRUSTED="--trusted-host pypi.org --trusted-host files.pythonhosted.org"
+"${VENV_DIR}/bin/pip" install --upgrade pip -q $PIP_TRUSTED
+"${VENV_DIR}/bin/pip" install -r "${INSTALL_DIR}/requirements.txt" -q $PIP_TRUSTED
 
 # Install systemd service
 echo "Installing systemd service..."
