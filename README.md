@@ -238,15 +238,14 @@ Speichern und Notepad schließen.
 
 ```powershell
 python -m venv venv
-.\venv\Scripts\pip install --upgrade pip
-.\venv\Scripts\pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-> **SSL-Proxy / Firmen-Firewall Fehler?** Falls du eine Fehlermeldung wie `CertificateError` oder `SSLError` bekommst (typisch bei Netzwerken mit SSL-Inspection), diesen Befehl verwenden:
+> **DNS- oder SSL-Fehler bei pip?** Falls du `getaddrinfo failed`, `CertificateError` oder `SSLError` bekommst (typisch bei Windows Server mit eingeschränktem Internet oder SSL-Inspection-Proxy):
 > ```powershell
-> .\venv\Scripts\pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org
-> .\venv\Scripts\pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
+> python -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
 > ```
+> **Hinweis:** Pip immer über `python -m pip` aufrufen, nicht über `.\venv\Scripts\pip` — auf Windows kann pip sich sonst nicht selbst aktualisieren. Ein Pip-Upgrade ist für dieses Tool aber ohnehin nicht notwendig.
 
 ### 3.5 Test-Lauf (einmalig ausführen)
 
