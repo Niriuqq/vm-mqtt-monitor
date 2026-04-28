@@ -26,7 +26,7 @@ try {
     $pythonVersion = & python --version 2>&1
     Write-Host "Found: $pythonVersion"
 } catch {
-    Write-Error "Python not found. Install Python 3.9+ from https://python.org and ensure it's in PATH."
+    Write-Error "Python not found. Install Python 3.9+ from https://python.org and ensure it is in PATH."
     exit 1
 }
 
@@ -35,10 +35,16 @@ if (-not (Test-Path $InstallDir)) {
     New-Item -ItemType Directory -Path $InstallDir | Out-Null
 }
 
-# Copy files
-Write-Host "Copying files to $InstallDir..."
-Copy-Item "$ScriptDir\vm_mqtt_monitor.py" "$InstallDir\" -Force
-Copy-Item "$ScriptDir\requirements.txt" "$InstallDir\" -Force
+# Copy files (skip if already running from install dir)
+$sourceResolved = (Resolve-Path $ScriptDir).Path
+$destResolved = (Resolve-Path $InstallDir).Path
+if ($sourceResolved -ne $destResolved) {
+    Write-Host "Copying files to $InstallDir..."
+    Copy-Item "$ScriptDir\vm_mqtt_monitor.py" "$InstallDir\" -Force
+    Copy-Item "$ScriptDir\requirements.txt" "$InstallDir\" -Force
+} else {
+    Write-Host "Already running from $InstallDir, skipping file copy."
+}
 
 # Copy or create config
 $configDest = "$InstallDir\config.yaml"
@@ -48,30 +54,31 @@ if (-not (Test-Path $configDest)) {
     } else {
         Copy-Item "$ScriptDir\config.example.yaml" $configDest -Force
         Write-Host ""
-        Write-Host "  !! config.yaml created from example — edit it before starting:" -ForegroundColor Yellow
+        Write-Host "  !! config.yaml created from example - edit it before starting:" -ForegroundColor Yellow
         Write-Host "     notepad $configDest" -ForegroundColor Yellow
         Write-Host ""
     }
 }
 
-# Install dependencies into system Python (avoids venv/pip conflicts on Windows Server)
+# Install dependencies into system Python
 Write-Host "Installing Python dependencies..."
-$pipFlags = @("install", "-r", "$InstallDir\requirements.txt", "--trusted-host", "pypi.org", "--trusted-host", "files.pythonhosted.org", "-q")
-& python -m pip @pipFlags
+& python -m pip install -r "$InstallDir\requirements.txt" --trusted-host pypi.org --trusted-host files.pythonhosted.org -q
 if ($LASTEXITCODE -ne 0) {
-    Write-Error "pip install failed. Make sure Python has internet access or install psutil, paho-mqtt and PyYAML manually."
+    Write-Error "pip install failed. Ensure Python has internet access or install psutil, paho-mqtt and PyYAML manually."
     exit 1
 }
 
-# Get system python path
+# Get system Python executable path
 $pythonExe = (Get-Command python).Source
 
 # Create wrapper script that Task Scheduler will call
 $wrapperScript = "$InstallDir\run_monitor.ps1"
-@"
-Set-Location '$InstallDir'
-& '$pythonExe' '$InstallDir\vm_mqtt_monitor.py' --config '$configDest' --once
-"@ | Out-File -FilePath $wrapperScript -Encoding utf8
+$wrapperContent = @'
+Set-Location 'INSTALL_DIR'
+& 'PYTHON_EXE' 'INSTALL_DIR\vm_mqtt_monitor.py' --config 'CONFIG_DEST' --once
+'@
+$wrapperContent = $wrapperContent.Replace('INSTALL_DIR', $InstallDir).Replace('PYTHON_EXE', $pythonExe).Replace('CONFIG_DEST', $configDest)
+$wrapperContent | Out-File -FilePath $wrapperScript -Encoding utf8
 
 # Register Scheduled Task (runs every N minutes)
 Write-Host "Registering Scheduled Task '$TaskName' (every $IntervalMinutes min)..."
@@ -82,7 +89,6 @@ $action = New-ScheduledTaskAction `
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -RunOnlyIfNetworkAvailable
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
-# Remove existing task if present
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 
 Register-ScheduledTask `
@@ -99,5 +105,5 @@ Write-Host "Next steps:"
 Write-Host "  1. Edit the config:  notepad $configDest"
 Write-Host "  2. Start the task:   Start-ScheduledTask -TaskName '$TaskName'"
 Write-Host "  3. Check status:     Get-ScheduledTask -TaskName '$TaskName'"
-Write-Host "  4. Run manually:     & '$venvDir\Scripts\python.exe' '$InstallDir\vm_mqtt_monitor.py' --config '$configDest' --once"
+Write-Host "  4. Run manually:     python '$InstallDir\vm_mqtt_monitor.py' --config '$configDest' --once"
 Write-Host ""
