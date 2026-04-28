@@ -234,23 +234,24 @@ disk_paths:
 
 Speichern und Notepad schließen.
 
-### 3.4 Python-Umgebung einrichten
+### 3.4 Abhängigkeiten installieren
+
+Pakete direkt ins System-Python installieren (kein venv nötig auf Windows):
 
 ```powershell
-python -m venv venv
 python -m pip install -r requirements.txt
 ```
 
-> **DNS- oder SSL-Fehler bei pip?** Falls du `getaddrinfo failed`, `CertificateError` oder `SSLError` bekommst (typisch bei Windows Server mit eingeschränktem Internet oder SSL-Inspection-Proxy):
+> **DNS- oder SSL-Fehler bei pip?** Falls du `getaddrinfo failed`, `CertificateError` oder `SSLError` bekommst:
 > ```powershell
 > python -m pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
 > ```
-> **Hinweis:** Pip immer über `python -m pip` aufrufen, nicht über `.\venv\Scripts\pip` — auf Windows kann pip sich sonst nicht selbst aktualisieren. Ein Pip-Upgrade ist für dieses Tool aber ohnehin nicht notwendig.
+> **Wichtig:** Immer `python -m pip` verwenden, nie `pip install` oder `.\venv\Scripts\pip` — auf Windows Server kann das zu Konflikten führen.
 
 ### 3.5 Test-Lauf (einmalig ausführen)
 
 ```powershell
-.\venv\Scripts\python.exe vm_mqtt_monitor.py --config config.yaml --once
+python vm_mqtt_monitor.py --config config.yaml --once
 ```
 
 Erwartete Ausgabe:

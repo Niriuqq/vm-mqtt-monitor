@@ -54,18 +54,23 @@ if (-not (Test-Path $configDest)) {
     }
 }
 
-# Create virtual environment
-Write-Host "Setting up Python virtual environment..."
-$venvDir = "$InstallDir\venv"
-& python -m venv $venvDir
-& "$venvDir\Scripts\pip" install --upgrade pip -q
-& "$venvDir\Scripts\pip" install -r "$InstallDir\requirements.txt" -q
+# Install dependencies into system Python (avoids venv/pip conflicts on Windows Server)
+Write-Host "Installing Python dependencies..."
+$pipFlags = @("install", "-r", "$InstallDir\requirements.txt", "--trusted-host", "pypi.org", "--trusted-host", "files.pythonhosted.org", "-q")
+& python -m pip @pipFlags
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "pip install failed. Make sure Python has internet access or install psutil, paho-mqtt and PyYAML manually."
+    exit 1
+}
+
+# Get system python path
+$pythonExe = (Get-Command python).Source
 
 # Create wrapper script that Task Scheduler will call
 $wrapperScript = "$InstallDir\run_monitor.ps1"
 @"
 Set-Location '$InstallDir'
-& '$venvDir\Scripts\python.exe' '$InstallDir\vm_mqtt_monitor.py' --config '$configDest' --once
+& '$pythonExe' '$InstallDir\vm_mqtt_monitor.py' --config '$configDest' --once
 "@ | Out-File -FilePath $wrapperScript -Encoding utf8
 
 # Register Scheduled Task (runs every N minutes)
