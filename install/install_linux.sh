@@ -17,10 +17,18 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-# Check python3
-if ! command -v python3 &>/dev/null; then
-    echo "Installing python3..."
-    apt-get update && apt-get install -y python3 python3-pip python3-venv
+# Install Python and dependencies via apt (avoids pip/proxy issues)
+echo "Installing dependencies via apt..."
+apt-get update -q
+apt-get install -y python3 python3-pip python3-venv python3-psutil python3-yaml
+
+# paho-mqtt: try apt first, fall back to pip
+if apt-get install -y python3-paho-mqtt 2>/dev/null; then
+    echo "paho-mqtt installed via apt."
+    USE_SYSTEM_PKGS="--system-site-packages"
+else
+    echo "paho-mqtt not available via apt, will use pip..."
+    USE_SYSTEM_PKGS=""
 fi
 
 # Create install directory
@@ -45,14 +53,15 @@ if [ ! -f "${INSTALL_DIR}/config.yaml" ]; then
     fi
 fi
 
-# Create virtualenv and install dependencies
+# Create virtualenv (with system packages if apt provided them)
 echo "Setting up Python virtual environment..."
-python3 -m venv "${VENV_DIR}"
+python3 -m venv "${VENV_DIR}" ${USE_SYSTEM_PKGS}
 
-# Use --trusted-host flags in case the network uses SSL inspection (corporate proxy)
-PIP_TRUSTED="--trusted-host pypi.org --trusted-host files.pythonhosted.org"
-"${VENV_DIR}/bin/pip" install --upgrade pip -q $PIP_TRUSTED
-"${VENV_DIR}/bin/pip" install -r "${INSTALL_DIR}/requirements.txt" -q $PIP_TRUSTED
+# Only use pip if apt didn't cover all packages
+if [ -z "${USE_SYSTEM_PKGS}" ]; then
+    PIP_TRUSTED="--trusted-host pypi.org --trusted-host files.pythonhosted.org"
+    "${VENV_DIR}/bin/pip" install -r "${INSTALL_DIR}/requirements.txt" -q $PIP_TRUSTED
+fi
 
 # Install systemd service
 echo "Installing systemd service..."

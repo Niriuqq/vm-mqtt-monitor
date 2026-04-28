@@ -78,7 +78,22 @@ sudo chown -R $USER:$USER /opt/vm-mqtt-monitor
 cd /opt/vm-mqtt-monitor
 ```
 
-### 2.2 Python-Umgebung einrichten
+### 2.2 Python-Abhängigkeiten installieren
+
+**Empfohlen — über apt (funktioniert auch hinter Firewalls/Proxies):**
+
+```bash
+sudo apt install -y python3-psutil python3-paho-mqtt python3-yaml
+```
+
+Danach venv mit System-Paketen erstellen:
+
+```bash
+python3 -m venv venv --system-site-packages
+source venv/bin/activate
+```
+
+**Alternativ — über pip (nur ohne Proxy/Firewall-Einschränkungen):**
 
 ```bash
 python3 -m venv venv
@@ -87,10 +102,9 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> **SSL-Proxy / Firmen-Firewall Fehler?** Falls du eine Fehlermeldung wie `CertificateError` oder `SSLError` bekommst (typisch bei Netzwerken mit SSL-Inspection), diesen Befehl verwenden:
+> **SSL-Proxy / Firmen-Firewall Fehler bei pip?** Falls du `CertificateError`, `SSLError` oder `404`-Fehler bekommst, verwende die apt-Methode oben. Sollte `python3-paho-mqtt` in deiner apt-Version nicht verfügbar sein, pip mit diesen Flags verwenden:
 > ```bash
-> pip install --upgrade pip --trusted-host pypi.org --trusted-host files.pythonhosted.org
-> pip install -r requirements.txt --trusted-host pypi.org --trusted-host files.pythonhosted.org
+> pip install paho-mqtt --trusted-host pypi.org --trusted-host files.pythonhosted.org
 > ```
 
 ### 2.3 Konfiguration erstellen
