@@ -1,152 +1,324 @@
 # vm-mqtt-monitor
 
 Cross-platform system metrics publisher for **Home Assistant** via MQTT.  
-Works on **Windows Server**, **Debian**, **Ubuntu** and any other Linux distribution — all hosted on VMware ESXi or bare metal.
+Läuft auf **Windows Server**, **Debian**, **Ubuntu** und anderen Linux-Distributionen — auch auf VMware ESXi gehostete VMs.
 
-Inspired by [rpi-mqtt-monitor](https://github.com/hjelev/rpi-mqtt-monitor), redesigned to run everywhere.
+Inspiriert von [rpi-mqtt-monitor](https://github.com/hjelev/rpi-mqtt-monitor), neu gebaut für alle Plattformen.
 
-## Metrics
+## Was wird überwacht?
 
-| Metric | Description | Platform |
-|---|---|---|
-| CPU Load | CPU utilization in % | All |
-| CPU Temperature | Average CPU core temperature in °C | Linux (where sensors are available), Windows (requires WMI) |
-| Memory Usage | RAM usage in % | All |
-| Swap / Page File | Swap or Windows page file usage in % | All |
-| Disk Usage | Usage % per configured disk path/drive | All |
+| Metrik | Beschreibung |
+|---|---|
+| CPU Load | CPU-Auslastung in % |
+| CPU Temperatur | Durchschnittliche Kerntemperatur in °C (wo verfügbar) |
+| Memory Usage | RAM-Auslastung in % |
+| Swap / Page File | Swap- oder Windows-Auslagerungsdatei in % |
+| Disk Usage | Festplattenauslastung in % (pro konfiguriertem Pfad/Laufwerk) |
 
-## Home Assistant Integration
+> **Hinweis zu CPU-Temperatur auf VMs:** VMware ESXi gibt Temperatursensoren nicht an Gast-VMs weiter. Die Temperatur-Metrik wird in diesem Fall einfach weggelassen — alle anderen Metriken funktionieren normal.
 
-vm-mqtt-monitor uses **MQTT Discovery** — entities appear automatically in Home Assistant under a device named after the hostname. No manual sensor configuration needed.
+---
 
-Each host shows up as its own device in HA, with all metrics as sensor entities.
+## Wie funktioniert die Home Assistant Integration?
 
-## Quick Start
+Der Monitor nutzt **MQTT Discovery**: Sobald er läuft, erscheinen alle Sensoren **automatisch** in Home Assistant unter einem Gerät mit dem Hostnamen des Servers. Es muss nichts manuell in HA konfiguriert werden.
 
-### 1. Install dependencies
+---
+
+## Voraussetzungen
+
+- Python 3.9 oder neuer
+- Ein laufender **MQTT Broker** (z.B. Mosquitto als HA Add-on)
+- Home Assistant mit aktivierter **MQTT Integration**
+
+---
+
+## Teil 1: Home Assistant vorbereiten
+
+### 1.1 Mosquitto MQTT Broker installieren
+
+1. In Home Assistant: **Einstellungen → Add-ons → Add-on Store**
+2. Suche nach **Mosquitto broker** und installieren
+3. Nach der Installation: Add-on starten und **"Start on boot"** aktivieren
+
+### 1.2 MQTT-Benutzer erstellen
+
+1. **Einstellungen → Personen → Benutzer** (oben rechts auf "Benutzer" wechseln)
+2. Klick auf **"Benutzer hinzufügen"**
+3. Name: z.B. `mqtt_monitor`, Benutzername: `mqtt_monitor`, Passwort vergeben
+4. Diese Zugangsdaten später in der `config.yaml` eintragen
+
+### 1.3 MQTT Integration aktivieren
+
+1. **Einstellungen → Geräte & Dienste → Integration hinzufügen**
+2. Suche nach **MQTT** und hinzufügen
+3. Broker: `localhost` (oder IP des HA-Servers), Port: `1883`
+4. Benutzername und Passwort vom gerade erstellten Benutzer eingeben
+5. Speichern
+
+Nach diesen Schritten ist HA bereit. Die Sensoren erscheinen automatisch sobald der Monitor das erste Mal läuft.
+
+---
+
+## Teil 2: Installation auf Ubuntu / Debian
+
+Diese Anleitung gilt für Ubuntu Server und Debian. Alle Befehle als normaler Benutzer mit `sudo`-Rechten ausführen.
+
+### 2.1 Repo klonen
 
 ```bash
+sudo apt update
+sudo apt install -y git python3 python3-pip python3-venv
+```
+
+```bash
+cd /opt
+sudo git clone https://github.com/Niriuqq/vm-mqtt-monitor.git
+sudo chown -R $USER:$USER /opt/vm-mqtt-monitor
+cd /opt/vm-mqtt-monitor
+```
+
+### 2.2 Python-Umgebung einrichten
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 2. Configure
+### 2.3 Konfiguration erstellen
 
 ```bash
 cp config.example.yaml config.yaml
-nano config.yaml   # or notepad config.yaml on Windows
+nano config.yaml
 ```
 
-Minimum required settings:
+Mindestens diese Werte anpassen:
 
 ```yaml
-mqtt_host: "192.168.1.10"     # Your MQTT broker / Home Assistant IP
-mqtt_user: "mqtt_user"
-mqtt_password: "mqtt_password"
+mqtt_host: "192.168.1.10"      # IP-Adresse deines Home Assistant / MQTT-Brokers
+mqtt_port: 1883
+mqtt_user: "mqtt_monitor"      # MQTT-Benutzer aus Schritt 1.2
+mqtt_password: "dein_passwort"
+
+interval: 60                   # Abfrageintervall in Sekunden
+
+disk_paths:
+  - "/"                        # Root-Partition
+  # - "/home"                  # Weitere Partitionen nach Bedarf
 ```
 
-### 3. Run
+Speichern mit `Ctrl+O`, beenden mit `Ctrl+X`.
+
+### 2.4 Test-Lauf (einmalig ausführen)
 
 ```bash
-python3 vm_mqtt_monitor.py
-```
-
-Or one-shot (publish once and exit):
-
-```bash
+source venv/bin/activate
 python3 vm_mqtt_monitor.py --once
 ```
 
----
+Erwartete Ausgabe:
+```
+2024-01-15 10:23:01 [INFO] Collecting metrics...
+2024-01-15 10:23:02 [INFO]   cpu_load: 4.2
+2024-01-15 10:23:02 [INFO]   memory_usage: 31.7
+2024-01-15 10:23:02 [INFO]   swap_usage: 0.0
+2024-01-15 10:23:02 [INFO]   disk_root: 18.4
+2024-01-15 10:23:02 [INFO] Published 4 metrics.
+```
 
-## Installation as a Service
+Jetzt in Home Assistant unter **Einstellungen → Geräte & Dienste → MQTT** nachschauen — das Gerät sollte bereits erschienen sein.
 
-### Linux (Debian / Ubuntu)
+### 2.5 Als systemd-Service einrichten (Dauerstart)
 
 ```bash
 sudo bash install/install_linux.sh
-sudo nano /opt/vm-mqtt-monitor/config.yaml
-sudo systemctl start vm-mqtt-monitor
-sudo journalctl -u vm-mqtt-monitor -f
 ```
 
-### Windows Server
+Der Installer kopiert die Dateien nach `/opt/vm-mqtt-monitor` und richtet den Service ein.
 
-Run in **Administrator PowerShell**:
+Danach:
+
+```bash
+sudo systemctl start vm-mqtt-monitor
+sudo systemctl status vm-mqtt-monitor
+```
+
+Logs ansehen:
+
+```bash
+journalctl -u vm-mqtt-monitor -f
+```
+
+#### Service-Befehle im Überblick
+
+| Befehl | Aktion |
+|---|---|
+| `sudo systemctl start vm-mqtt-monitor` | Service starten |
+| `sudo systemctl stop vm-mqtt-monitor` | Service stoppen |
+| `sudo systemctl restart vm-mqtt-monitor` | Service neu starten |
+| `sudo systemctl status vm-mqtt-monitor` | Status anzeigen |
+| `sudo systemctl enable vm-mqtt-monitor` | Autostart aktivieren |
+| `sudo systemctl disable vm-mqtt-monitor` | Autostart deaktivieren |
+| `journalctl -u vm-mqtt-monitor -f` | Logs live verfolgen |
+
+---
+
+## Teil 3: Installation auf Windows Server
+
+### 3.1 Python installieren
+
+Falls Python noch nicht installiert ist:
+
+1. Python von [python.org/downloads](https://www.python.org/downloads/) herunterladen (Version 3.9 oder neuer)
+2. Installer starten und **"Add Python to PATH"** anhaken
+3. Installation abschließen
+4. Prüfen: PowerShell öffnen → `python --version`
+
+### 3.2 Repo herunterladen
+
+PowerShell als **Administrator** öffnen:
+
+```powershell
+cd C:\
+git clone https://github.com/Niriuqq/vm-mqtt-monitor.git
+cd C:\vm-mqtt-monitor
+```
+
+Falls Git nicht installiert ist, alternativ als ZIP herunterladen:
+- GitHub-Seite aufrufen → **Code → Download ZIP**
+- ZIP nach `C:\vm-mqtt-monitor` entpacken
+
+### 3.3 Konfiguration erstellen
+
+```powershell
+Copy-Item config.example.yaml config.yaml
+notepad config.yaml
+```
+
+Mindestens diese Werte anpassen:
+
+```yaml
+mqtt_host: "192.168.1.10"      # IP-Adresse deines Home Assistant / MQTT-Brokers
+mqtt_port: 1883
+mqtt_user: "mqtt_monitor"      # MQTT-Benutzer aus Schritt 1.2
+mqtt_password: "dein_passwort"
+
+interval: 60                   # Abfrageintervall in Sekunden
+
+disk_paths:
+  - "C:\\"                     # C-Laufwerk
+  # - "D:\\"                   # Weitere Laufwerke nach Bedarf
+```
+
+Speichern und Notepad schließen.
+
+### 3.4 Python-Umgebung einrichten
+
+```powershell
+python -m venv venv
+.\venv\Scripts\pip install --upgrade pip
+.\venv\Scripts\pip install -r requirements.txt
+```
+
+### 3.5 Test-Lauf (einmalig ausführen)
+
+```powershell
+.\venv\Scripts\python.exe vm_mqtt_monitor.py --config config.yaml --once
+```
+
+Erwartete Ausgabe:
+```
+2024-01-15 10:23:01 [INFO] Collecting metrics...
+2024-01-15 10:23:02 [INFO]   cpu_load: 12.5
+2024-01-15 10:23:02 [INFO]   memory_usage: 45.3
+2024-01-15 10:23:02 [INFO]   swap_usage: 2.1
+2024-01-15 10:23:02 [INFO]   disk_C_drive: 34.7
+2024-01-15 10:23:02 [INFO] Published 4 metrics.
+```
+
+### 3.6 Als geplanten Task einrichten (Dauerstart)
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\install\install_windows.ps1
-notepad C:\vm-mqtt-monitor\config.yaml
+.\install\install_windows.ps1 -InstallDir "C:\vm-mqtt-monitor"
+```
+
+Der Installer richtet einen **Windows Task Scheduler**-Eintrag ein, der jede Minute ausgeführt wird und beim Systemstart automatisch aktiv ist.
+
+Task starten:
+
+```powershell
 Start-ScheduledTask -TaskName "vm-mqtt-monitor"
 ```
 
-The Windows installer registers a **Scheduled Task** running every minute as SYSTEM.
+#### Task-Befehle im Überblick
+
+| Befehl | Aktion |
+|---|---|
+| `Start-ScheduledTask -TaskName "vm-mqtt-monitor"` | Task starten |
+| `Stop-ScheduledTask -TaskName "vm-mqtt-monitor"` | Task stoppen |
+| `Get-ScheduledTask -TaskName "vm-mqtt-monitor"` | Status anzeigen |
+| `Unregister-ScheduledTask -TaskName "vm-mqtt-monitor"` | Task entfernen |
+
+Logs: **Ereignisanzeige → Windows-Protokolle → System** oder Task Scheduler → History.
 
 ---
 
-## Configuration Reference
+## Teil 4: Home Assistant — Sensoren prüfen
 
-| Key | Default | Description |
+Nachdem der Monitor mindestens einmal gelaufen ist:
+
+1. **Einstellungen → Geräte & Dienste → MQTT**
+2. Dort erscheint unter **"Geräte"** ein Eintrag mit dem Hostnamen des Servers
+3. Klick darauf → alle Metriken als Sensoren sichtbar
+
+### Sensoren im Dashboard anzeigen
+
+1. Dashboard öffnen → **Bearbeiten → Karte hinzufügen**
+2. **"Entitäten"**-Karte wählen
+3. Sensoren des Geräts hinzufügen (z.B. `sensor.meinserver_cpu_load`)
+
+Für eine übersichtliche Ansicht empfiehlt sich die **Gauge**-Karte oder **History Graph**-Karte.
+
+### Automatisierungen / Alerts
+
+Beispiel: Benachrichtigung wenn CPU-Last über 90% steigt:
+
+1. **Einstellungen → Automatisierungen → Neu erstellen**
+2. Auslöser: **Zustand** → Entität: `sensor.meinserver_cpu_load` → Über: `90`
+3. Aktion: **Benachrichtigung senden**
+
+---
+
+## Konfigurationsreferenz
+
+| Schlüssel | Standard | Beschreibung |
 |---|---|---|
-| `mqtt_host` | — | MQTT broker hostname or IP (required) |
-| `mqtt_port` | `1883` | MQTT broker port |
-| `mqtt_user` | — | MQTT username |
-| `mqtt_password` | — | MQTT password |
-| `mqtt_tls` | `false` | Enable TLS/SSL |
-| `mqtt_keepalive` | `60` | Keepalive interval in seconds |
-| `discovery_prefix` | `homeassistant` | HA MQTT discovery prefix |
-| `base_topic` | `vmmonitor` | Base topic for state messages |
-| `hostname_override` | auto | Override the auto-detected hostname |
-| `interval` | `60` | Polling interval in seconds |
-| `monitor_swap` | `true` | Monitor swap / page file |
-| `disk_paths` | `["/"]` | List of disk paths to monitor |
-
-### Disk paths examples
-
-**Linux:**
-```yaml
-disk_paths:
-  - "/"
-  - "/home"
-  - "/data"
-```
-
-**Windows:**
-```yaml
-disk_paths:
-  - "C:\\"
-  - "D:\\"
-```
+| `mqtt_host` | — | IP oder Hostname des MQTT-Brokers (Pflichtfeld) |
+| `mqtt_port` | `1883` | MQTT-Port |
+| `mqtt_user` | — | MQTT-Benutzername |
+| `mqtt_password` | — | MQTT-Passwort |
+| `mqtt_tls` | `false` | TLS/SSL aktivieren |
+| `mqtt_keepalive` | `60` | Keepalive-Intervall in Sekunden |
+| `discovery_prefix` | `homeassistant` | HA MQTT Discovery Prefix |
+| `base_topic` | `vmmonitor` | Basis-Topic für State-Nachrichten |
+| `hostname_override` | automatisch | Hostnamen manuell überschreiben |
+| `interval` | `60` | Abfrageintervall in Sekunden |
+| `monitor_swap` | `true` | Swap / Auslagerungsdatei überwachen |
+| `disk_paths` | `["/"]` | Liste der zu überwachenden Pfade/Laufwerke |
 
 ---
 
-## MQTT Topics
+## MQTT Topics (zur Info)
 
-| Topic | Content |
+| Topic | Inhalt |
 |---|---|
 | `vmmonitor/{hostname}/status` | `online` / `offline` |
-| `vmmonitor/{hostname}/cpu_load` | CPU load % |
-| `vmmonitor/{hostname}/cpu_temp` | CPU temperature °C |
-| `vmmonitor/{hostname}/memory_usage` | Memory usage % |
-| `vmmonitor/{hostname}/swap_usage` | Swap/page file usage % |
-| `vmmonitor/{hostname}/disk_root` | Root disk usage % (Linux) |
-| `vmmonitor/{hostname}/disk_C_drive` | C: drive usage % (Windows) |
-
-HA Discovery config topics follow the pattern:
-`homeassistant/sensor/{device_id}/{metric}/config`
-
----
-
-## CPU Temperature Notes
-
-- **Linux**: Works out of the box on most systems via `psutil.sensors_temperatures()`. Requires kernel sensors to be enabled (standard on most modern distros).
-- **Windows**: Requires the optional `wmi` package (`pip install wmi`) and may need WMI access rights. If unavailable, the temperature metric is simply omitted — all other metrics still work.
-- **VMware VMs**: CPU temperature sensors are typically not exposed to guest VMs. This is a hypervisor limitation — the metric will be absent on ESXi-hosted VMs.
-
-## Requirements
-
-- Python 3.9+
-- `psutil` >= 5.9
-- `paho-mqtt` >= 2.0
-- `PyYAML` >= 6.0
-- Optional: `wmi` (Windows CPU temperature only)
+| `vmmonitor/{hostname}/cpu_load` | CPU-Last in % |
+| `vmmonitor/{hostname}/cpu_temp` | CPU-Temperatur in °C |
+| `vmmonitor/{hostname}/memory_usage` | RAM-Auslastung in % |
+| `vmmonitor/{hostname}/swap_usage` | Swap/Auslagerung in % |
+| `vmmonitor/{hostname}/disk_root` | Root-Partition in % (Linux) |
+| `vmmonitor/{hostname}/disk_C_drive` | C:-Laufwerk in % (Windows) |
