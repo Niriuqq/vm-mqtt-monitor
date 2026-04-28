@@ -20,6 +20,8 @@ base_topic: "vmmonitor"           # Base topic for state messages
 interval: 60                      # Polling interval in seconds
 
 monitor_swap: true                # Monitor swap/page file usage
+monitor_network: true             # Monitor total data sent/received since boot (in MB)
+monitor_uptime: true              # Monitor system uptime
 
 # Disk paths to monitor.
 # Linux examples: ["/", "/home", "/data"]

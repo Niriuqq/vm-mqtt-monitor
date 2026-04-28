@@ -10,6 +10,7 @@ import platform
 import socket
 import sys
 import time
+from datetime import timedelta
 from pathlib import Path
 
 try:
@@ -100,8 +101,28 @@ def get_disk_usage(path: str = "/") -> float:
 
 
 def get_swap_usage() -> float:
-    swap = psutil.swap_memory()
-    return swap.percent
+    return psutil.swap_memory().percent
+
+
+def get_network_stats() -> tuple[float, float]:
+    """Returns (bytes_sent_MB, bytes_recv_MB) total since boot."""
+    counters = psutil.net_io_counters()
+    sent_mb = round(counters.bytes_sent / 1024 / 1024, 2)
+    recv_mb = round(counters.bytes_recv / 1024 / 1024, 2)
+    return sent_mb, recv_mb
+
+
+def get_uptime() -> str:
+    """Returns uptime as a human-readable string, e.g. '2d 4h 13m'."""
+    delta = timedelta(seconds=int(time.time() - psutil.boot_time()))
+    days = delta.days
+    hours, remainder = divmod(delta.seconds, 3600)
+    minutes = remainder // 60
+    if days > 0:
+        return f"{days}d {hours}h {minutes}m"
+    elif hours > 0:
+        return f"{hours}h {minutes}m"
+    return f"{minutes}m"
 
 
 def collect_metrics(config: dict) -> dict:
@@ -121,21 +142,31 @@ def collect_metrics(config: dict) -> dict:
         metrics["cpu_temp"] = temp
 
     for path in disk_paths:
-        label = path.replace("\\", "").replace("/", "_").strip("_") or "root"
         if platform.system() == "Windows":
             label = path.replace(":\\", "").replace(":", "") + "_drive"
         else:
             label = "root" if path == "/" else path.replace("/", "_").strip("_")
         metrics[f"disk_{label}"] = get_disk_usage(path)
 
+    if config.get("monitor_network", True):
+        sent_mb, recv_mb = get_network_stats()
+        metrics["data_sent"] = sent_mb
+        metrics["data_received"] = recv_mb
+
+    if config.get("monitor_uptime", True):
+        metrics["uptime"] = get_uptime()
+
     return metrics
 
 
 SENSOR_DEFINITIONS = {
-    "cpu_load":     {"name": "CPU Load",        "unit": "%",  "icon": "mdi:cpu-64-bit",     "device_class": None},
-    "cpu_temp":     {"name": "CPU Temperature", "unit": "°C", "icon": "mdi:thermometer",    "device_class": "temperature"},
-    "memory_usage": {"name": "Memory Usage",    "unit": "%",  "icon": "mdi:memory",         "device_class": None},
-    "swap_usage":   {"name": "Swap Usage",      "unit": "%",  "icon": "mdi:swap-horizontal", "device_class": None},
+    "cpu_load":      {"name": "CPU Load",        "unit": "%",  "icon": "mdi:cpu-64-bit",      "device_class": None},
+    "cpu_temp":      {"name": "CPU Temperature", "unit": "°C", "icon": "mdi:thermometer",     "device_class": "temperature"},
+    "memory_usage":  {"name": "Memory Usage",    "unit": "%",  "icon": "mdi:memory",          "device_class": None},
+    "swap_usage":    {"name": "Swap Usage",      "unit": "%",  "icon": "mdi:swap-horizontal", "device_class": None},
+    "data_sent":     {"name": "Data Sent",       "unit": "MB", "icon": "mdi:upload-network",  "device_class": None},
+    "data_received": {"name": "Data Received",   "unit": "MB", "icon": "mdi:download-network","device_class": None},
+    "uptime":        {"name": "Uptime",          "unit": "",   "icon": "mdi:clock-outline",   "device_class": None},
 }
 
 
