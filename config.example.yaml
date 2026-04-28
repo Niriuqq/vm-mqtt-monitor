@@ -23,6 +23,12 @@ monitor_swap: true                # Monitor swap/page file usage
 monitor_network: true             # Monitor total data sent/received since boot (in MB)
 monitor_uptime: true              # Monitor system uptime
 
+# ── Remote Control ────────────────────────────────────────────────────────────
+# Adds Restart / Shutdown buttons to the device in Home Assistant.
+# The service must run as root (Linux) or Administrator (Windows) for these to work.
+allow_restart: true               # Show "System Restart" button in Home Assistant
+allow_shutdown: true              # Show "System Shutdown" button in Home Assistant
+
 # Disk paths to monitor.
 # Linux examples: ["/", "/home", "/data"]
 # Windows examples: ["C:\\", "D:\\"]

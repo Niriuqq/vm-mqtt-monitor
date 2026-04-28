@@ -8,6 +8,7 @@ import json
 import logging
 import platform
 import socket
+import subprocess
 import sys
 import time
 from datetime import timedelta
@@ -39,10 +40,7 @@ log = logging.getLogger(__name__)
 def load_config(path: str = "config.yaml") -> dict:
     config_path = Path(path)
     if not config_path.exists():
-        example = Path("config.example.yaml")
-        if example.exists():
-            sys.exit(f"config.yaml not found. Copy config.example.yaml to config.yaml and edit it.")
-        sys.exit(f"config.yaml not found at {config_path.resolve()}")
+        sys.exit(f"config.yaml not found. Copy config.example.yaml to config.yaml and edit it.")
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
 
@@ -58,26 +56,22 @@ def get_cpu_load() -> float:
 def get_cpu_temp() -> float | None:
     try:
         if platform.system() == "Windows":
-            # Try WMI on Windows (requires optional wmi package)
             try:
                 import wmi
                 w = wmi.WMI(namespace=r"root\wmi")
                 sensors = w.MSAcpi_ThermalZoneTemperature()
                 if sensors:
-                    temp_kelvin = sensors[0].CurrentTemperature / 10.0
-                    return round(temp_kelvin - 273.15, 1)
+                    return round(sensors[0].CurrentTemperature / 10.0 - 273.15, 1)
             except Exception:
                 return None
         else:
             temps = psutil.sensors_temperatures()
             if not temps:
                 return None
-            # Prefer coretemp, then k10temp, then cpu_thermal, then first available
             for key in ("coretemp", "k10temp", "cpu_thermal", "cpu-thermal"):
                 if key in temps:
                     readings = [r.current for r in temps[key]]
                     return round(sum(readings) / len(readings), 1)
-            # Fallback: first sensor group
             first = next(iter(temps.values()))
             readings = [r.current for r in first]
             return round(sum(readings) / len(readings), 1)
@@ -105,15 +99,11 @@ def get_swap_usage() -> float:
 
 
 def get_network_stats() -> tuple[float, float]:
-    """Returns (bytes_sent_MB, bytes_recv_MB) total since boot."""
     counters = psutil.net_io_counters()
-    sent_mb = round(counters.bytes_sent / 1024 / 1024, 2)
-    recv_mb = round(counters.bytes_recv / 1024 / 1024, 2)
-    return sent_mb, recv_mb
+    return round(counters.bytes_sent / 1024 / 1024, 2), round(counters.bytes_recv / 1024 / 1024, 2)
 
 
 def get_uptime() -> str:
-    """Returns uptime as a human-readable string, e.g. '2d 4h 13m'."""
     delta = timedelta(seconds=int(time.time() - psutil.boot_time()))
     days = delta.days
     hours, remainder = divmod(delta.seconds, 3600)
@@ -159,29 +149,44 @@ def collect_metrics(config: dict) -> dict:
     return metrics
 
 
+def execute_restart():
+    log.warning("RESTART command received — rebooting system...")
+    if platform.system() == "Windows":
+        subprocess.Popen(["shutdown", "/r", "/t", "3"])
+    else:
+        subprocess.Popen(["systemctl", "reboot"])
+
+
+def execute_shutdown():
+    log.warning("SHUTDOWN command received — shutting down system...")
+    if platform.system() == "Windows":
+        subprocess.Popen(["shutdown", "/s", "/t", "3"])
+    else:
+        subprocess.Popen(["systemctl", "poweroff"])
+
+
 SENSOR_DEFINITIONS = {
-    "cpu_load":      {"name": "CPU Load",        "unit": "%",  "icon": "mdi:cpu-64-bit",      "device_class": None},
-    "cpu_temp":      {"name": "CPU Temperature", "unit": "°C", "icon": "mdi:thermometer",     "device_class": "temperature"},
-    "memory_usage":  {"name": "Memory Usage",    "unit": "%",  "icon": "mdi:memory",          "device_class": None},
-    "swap_usage":    {"name": "Swap Usage",      "unit": "%",  "icon": "mdi:swap-horizontal", "device_class": None},
-    "data_sent":     {"name": "Data Sent",       "unit": "MB", "icon": "mdi:upload-network",  "device_class": None},
-    "data_received": {"name": "Data Received",   "unit": "MB", "icon": "mdi:download-network","device_class": None},
-    "uptime":        {"name": "Uptime",          "unit": "",   "icon": "mdi:clock-outline",   "device_class": None},
+    "cpu_load":      {"name": "CPU Load",        "unit": "%",  "icon": "mdi:cpu-64-bit",       "device_class": None},
+    "cpu_temp":      {"name": "CPU Temperature", "unit": "°C", "icon": "mdi:thermometer",      "device_class": "temperature"},
+    "memory_usage":  {"name": "Memory Usage",    "unit": "%",  "icon": "mdi:memory",           "device_class": None},
+    "swap_usage":    {"name": "Swap Usage",       "unit": "%",  "icon": "mdi:swap-horizontal",  "device_class": None},
+    "data_sent":     {"name": "Data Sent",        "unit": "MB", "icon": "mdi:upload-network",   "device_class": None},
+    "data_received": {"name": "Data Received",    "unit": "MB", "icon": "mdi:download-network", "device_class": None},
+    "uptime":        {"name": "Uptime",           "unit": "",   "icon": "mdi:clock-outline",    "device_class": None},
+}
+
+BUTTON_DEFINITIONS = {
+    "restart":  {"name": "System Restart",  "icon": "mdi:restart",       "payload": "PRESS"},
+    "shutdown": {"name": "System Shutdown", "icon": "mdi:power",         "payload": "PRESS"},
 }
 
 
 def get_sensor_def(metric_key: str) -> dict:
     if metric_key in SENSOR_DEFINITIONS:
         return SENSOR_DEFINITIONS[metric_key]
-    # Disk sensors
     if metric_key.startswith("disk_"):
         label = metric_key[5:].replace("_", " ").title()
-        return {
-            "name": f"Disk {label} Usage",
-            "unit": "%",
-            "icon": "mdi:harddisk",
-            "device_class": None,
-        }
+        return {"name": f"Disk {label} Usage", "unit": "%", "icon": "mdi:harddisk", "device_class": None}
     return {"name": metric_key.replace("_", " ").title(), "unit": "", "icon": "mdi:information", "device_class": None}
 
 
@@ -197,6 +202,7 @@ class MQTTMonitor:
         self._setup_tls()
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
+        self.client.on_message = self._on_message
         self._discovery_sent = set()
 
     def _setup_auth(self):
@@ -213,12 +219,38 @@ class MQTTMonitor:
     def _on_connect(self, client, userdata, flags, rc, properties=None):
         if rc == 0:
             log.info(f"Connected to MQTT broker at {self.config['mqtt_host']}:{self.config.get('mqtt_port', 1883)}")
+            # Subscribe to command topics for restart and shutdown buttons
+            if self.config.get("allow_restart", True):
+                topic = f"{self.base_topic}/{self.hostname}/cmd/restart"
+                client.subscribe(topic)
+                log.info(f"Subscribed to {topic}")
+            if self.config.get("allow_shutdown", True):
+                topic = f"{self.base_topic}/{self.hostname}/cmd/shutdown"
+                client.subscribe(topic)
+                log.info(f"Subscribed to {topic}")
         else:
             log.error(f"MQTT connection failed with code {rc}")
 
     def _on_disconnect(self, client, userdata, rc, properties=None, reason_code=None):
         if rc != 0:
             log.warning(f"Unexpected MQTT disconnect (rc={rc}), will reconnect...")
+
+    def _on_message(self, client, userdata, msg):
+        topic = msg.topic
+        payload = msg.payload.decode().strip()
+        log.info(f"Command received on {topic}: {payload}")
+
+        cmd_restart = f"{self.base_topic}/{self.hostname}/cmd/restart"
+        cmd_shutdown = f"{self.base_topic}/{self.hostname}/cmd/shutdown"
+
+        if topic == cmd_restart and payload == "PRESS":
+            self.client.publish(f"{self.base_topic}/{self.hostname}/status", "offline", retain=True)
+            time.sleep(0.5)
+            execute_restart()
+        elif topic == cmd_shutdown and payload == "PRESS":
+            self.client.publish(f"{self.base_topic}/{self.hostname}/status", "offline", retain=True)
+            time.sleep(0.5)
+            execute_shutdown()
 
     def connect(self):
         host = self.config["mqtt_host"]
@@ -265,16 +297,42 @@ class MQTTMonitor:
 
         self.client.publish(discovery_topic, json.dumps(payload), retain=True)
         self._discovery_sent.add(metric_key)
-        log.debug(f"Discovery published for {metric_key}")
+
+    def publish_button_discovery(self):
+        """Publish HA MQTT button discovery for restart and shutdown."""
+        buttons = []
+        if self.config.get("allow_restart", True):
+            buttons.append("restart")
+        if self.config.get("allow_shutdown", True):
+            buttons.append("shutdown")
+
+        for btn_key in buttons:
+            if f"btn_{btn_key}" in self._discovery_sent:
+                continue
+            btn = BUTTON_DEFINITIONS[btn_key]
+            discovery_topic = f"{self.discovery_prefix}/button/{self.device_id}/{btn_key}/config"
+            payload = {
+                "name": btn["name"],
+                "unique_id": f"{self.device_id}_{btn_key}",
+                "command_topic": f"{self.base_topic}/{self.hostname}/cmd/{btn_key}",
+                "payload_press": btn["payload"],
+                "icon": btn["icon"],
+                "device": self._device_payload(),
+                "availability_topic": f"{self.base_topic}/{self.hostname}/status",
+                "payload_available": "online",
+                "payload_not_available": "offline",
+            }
+            self.client.publish(discovery_topic, json.dumps(payload), retain=True)
+            self._discovery_sent.add(f"btn_{btn_key}")
+            log.info(f"Button discovery published: {btn['name']}")
 
     def publish_metrics(self, metrics: dict):
-        status_topic = f"{self.base_topic}/{self.hostname}/status"
-        self.client.publish(status_topic, "online", retain=True)
+        self.client.publish(f"{self.base_topic}/{self.hostname}/status", "online", retain=True)
+        self.publish_button_discovery()
 
         for key, value in metrics.items():
             self.publish_discovery(key)
-            state_topic = f"{self.base_topic}/{self.hostname}/{key}"
-            self.client.publish(state_topic, str(value), retain=False)
+            self.client.publish(f"{self.base_topic}/{self.hostname}/{key}", str(value), retain=False)
             log.info(f"  {key}: {value}")
 
     def run(self):
@@ -285,7 +343,7 @@ class MQTTMonitor:
 
         try:
             while True:
-                log.info(f"Collecting metrics...")
+                log.info("Collecting metrics...")
                 metrics = collect_metrics(self.config)
                 self.publish_metrics(metrics)
                 log.info(f"Published {len(metrics)} metrics. Next update in {interval}s.")
@@ -293,10 +351,7 @@ class MQTTMonitor:
         except KeyboardInterrupt:
             log.info("Shutting down...")
         finally:
-            # Mark device offline
-            self.client.publish(
-                f"{self.base_topic}/{self.hostname}/status", "offline", retain=True
-            )
+            self.client.publish(f"{self.base_topic}/{self.hostname}/status", "offline", retain=True)
             time.sleep(0.5)
             self.disconnect()
 
