@@ -1,0 +1,31 @@
+# vm-mqtt-monitor configuration
+# Copy this file to config.yaml and edit the values.
+
+# ── MQTT Broker ──────────────────────────────────────────────────────────────
+mqtt_host: "192.168.1.10"        # IP or hostname of your MQTT broker (e.g. Home Assistant)
+mqtt_port: 1883                   # Default: 1883 (or 8883 for TLS)
+mqtt_user: "mqtt_user"            # MQTT username (leave empty if no auth)
+mqtt_password: "mqtt_password"    # MQTT password
+mqtt_tls: false                   # Set to true for TLS/SSL connections
+mqtt_keepalive: 60                # Keepalive in seconds
+
+# ── Discovery & Topics ───────────────────────────────────────────────────────
+discovery_prefix: "homeassistant" # HA MQTT discovery prefix (default: homeassistant)
+base_topic: "vmmonitor"           # Base topic for state messages
+
+# ── Host Identity ─────────────────────────────────────────────────────────────
+# hostname_override: "my-server"  # Optional: override auto-detected hostname
+
+# ── Monitoring ───────────────────────────────────────────────────────────────
+interval: 60                      # Polling interval in seconds
+
+monitor_swap: true                # Monitor swap/page file usage
+
+# Disk paths to monitor.
+# Linux examples: ["/", "/home", "/data"]
+# Windows examples: ["C:\\", "D:\\"]
+disk_paths:
+  - "/"
+  # - "/home"
+  # - "C:\\"
+  # - "D:\\"

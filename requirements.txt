@@ -1,0 +1,5 @@
+psutil>=5.9.0
+paho-mqtt>=2.0.0
+PyYAML>=6.0
+# Optional: WMI for CPU temperature on Windows
+# wmi>=1.5.1; sys_platform == "win32"
