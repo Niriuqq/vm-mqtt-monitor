@@ -332,7 +332,7 @@ class MQTTMonitor:
 
         for key, value in metrics.items():
             self.publish_discovery(key)
-            self.client.publish(f"{self.base_topic}/{self.hostname}/{key}", str(value), retain=False)
+            self.client.publish(f"{self.base_topic}/{self.hostname}/{key}", str(value), retain=True)
             log.info(f"  {key}: {value}")
 
     def run(self):
